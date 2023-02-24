@@ -83,10 +83,11 @@ try_to_enqueue()
 
 class Manager:
     def __init__(self) -> None:
-        # self._num_devices = torch.cuda.device_count()
-        self._num_devices = 2
+        self._num_devices = torch.cuda.device_count()
         self._available = [True for _ in range(self._num_devices)]
         self._running = [None for _ in range(self._num_devices)]
+
+        print(f"Initializing queue for {self._num_devices} devices")
 
     def available_index(self):
         if True in self._available:
@@ -99,7 +100,7 @@ class Manager:
         args[0] = shutil.which(args[0])
         print(f"running {args} on {idx}")
         env = copy.deepcopy(os.environ)
-        env["CUDA_AVAILABLE_DEVICES"] = f"{idx}"
+        env["CUDA_VISIBLE_DEVICES"] = f"{idx}"
         p = subprocess.Popen(args, cwd=os.getcwd(), start_new_session=True, env=env)
         self._running[idx] = {"proc": p, "args": args}
 
