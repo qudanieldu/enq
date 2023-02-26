@@ -61,36 +61,10 @@ def reset():
         pass
 
 
-if flag not in sys.argv:
-    sys.argv.append(flag)
-    sys.argv = [sys.executable] + sys.argv
-    p = subprocess.Popen(
-        sys.argv,
-        cwd=os.getcwd(),
-        start_new_session=True,
-    )
-    exit(0)
-
-assert flag in sys.argv
-sys.argv.remove(flag)
-if not lock_file_path.exists() or not queue_file_path.exists():
-    reset()
-
-    with open(lock_file_path, "w") as f:
-        f.write("lock")
-    with open(queue_file_path, "w") as f:
-        f.write(json.dumps({"last_id": 0, "queue": []}))
-else:
-    try_to_enqueue()
-    exit(0)
-
-try_to_enqueue()
-
-
 class Manager:
     def __init__(self) -> None:
-        self._num_devices = torch.cuda.device_count()
-        # self._num_devices = 2
+        # self._num_devices = torch.cuda.device_count()
+        self._num_devices = 2
         if self._num_devices == 0:
             raise Exception("No gpus found")
 
@@ -113,8 +87,16 @@ class Manager:
         print(f"running id {id}:{args} on {idx}")
         env = copy.deepcopy(os.environ)
         env["CUDA_VISIBLE_DEVICES"] = f"{idx}"
-        p = subprocess.Popen(args, cwd=os.getcwd(), start_new_session=True, env=env)
-        self._running[idx] = {"proc": p, "args": args, "id": id}
+        stdout = open(f"{id}_log.txt", "w")
+        p = subprocess.Popen(
+            args,
+            cwd=os.getcwd(),
+            start_new_session=True,
+            env=env,
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+        )
+        self._running[idx] = {"proc": p, "args": args, "id": id, "output_file": stdout}
 
     def poll_processes(self):
         for i, proc_dict in enumerate(self._running):
@@ -126,6 +108,7 @@ class Manager:
                 continue
             print(f'id {proc_dict["id"]} finished running, returned {ret_code}')
             self._available[i] = True
+            self._running[i]["output_file"].close()
             self._running[i] = None
 
     def run(self) -> None:
@@ -147,9 +130,34 @@ class Manager:
             time.sleep(interval)
 
 
-try:
-    m = Manager()
+if __name__ == "__main__":
+    if flag not in sys.argv:
+        sys.argv.append(flag)
+        sys.argv = [sys.executable] + sys.argv
+        p = subprocess.Popen(
+            sys.argv,
+            cwd=os.getcwd(),
+            start_new_session=True,
+        )
+        exit(0)
 
-    m.run()
-finally:
-    reset()
+    assert flag in sys.argv
+    sys.argv.remove(flag)
+    if not lock_file_path.exists() or not queue_file_path.exists():
+        reset()
+
+        with open(lock_file_path, "w") as f:
+            f.write("lock")
+        with open(queue_file_path, "w") as f:
+            f.write(json.dumps({"last_id": 0, "queue": []}))
+    else:
+        try_to_enqueue()
+        exit(0)
+
+    try_to_enqueue()
+    try:
+        m = Manager()
+
+        m.run()
+    finally:
+        reset()
